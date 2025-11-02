@@ -10,6 +10,10 @@ import {
   CheckCircle,
   XCircle,
   Loader,
+  Copy,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
 } from "lucide-react";
 import {
   LineChart,
@@ -27,7 +31,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const API_BASE_URL = "http://localhost:8000"; // Update with your FastAPI backend URL
+const API_BASE_URL = "http://localhost:8000"; // Update if needed
 
 const COLORS = [
   "#3b82f6",
@@ -38,20 +42,75 @@ const COLORS = [
   "#ec4899",
 ];
 
+function SQLTerminal({ text, isError, onCopy }) {
+  const preRef = useRef(null);
+
+  return (
+    <div className="max-w-4xl w-full mx-auto">
+      <div className="rounded-xl overflow-hidden shadow-lg">
+        {/* Title bar with mac dots */}
+        <div className="flex items-center justify-between px-4 py-2 bg-gray-900">
+          <div className="flex items-center gap-2">
+            {/* macOS dots */}
+            <div className="flex items-center gap-2 mr-3">
+              <span className="w-3 h-3 rounded-full bg-[#ff5f57]" />
+              <span className="w-3 h-3 rounded-full bg-[#ffbd2e]" />
+              <span className="w-3 h-3 rounded-full bg-[#28c840]" />
+            </div>
+            <div className="text-sm text-gray-300 font-medium">SQL Query</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                if (onCopy) onCopy(text || "");
+              }}
+              title="Copy SQL"
+              className="flex items-center gap-2 px-3 py-1 rounded-md bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm"
+            >
+              <Copy className="w-4 h-4" />
+              Copy
+            </button>
+          </div>
+        </div>
+
+        {/* Terminal body */}
+        <div className={`px-4 py-4 bg-[#0b0f12]`}>
+          <pre
+            ref={preRef}
+            className={`whitespace-pre-wrap break-words text-sm font-mono rounded-md p-3 min-h-[80px] ${
+              isError ? "text-red-400" : "text-green-400"
+            } bg-transparent`}
+          >
+            {text || "-- No SQL to display --"}
+          </pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
+  // Authentication and UI state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [token, setToken] = useState(null);
   const [showDbConfig, setShowDbConfig] = useState(false);
+
+  // Connections
   const [dbConnections, setDbConnections] = useState([]);
   const [activeConnection, setActiveConnection] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState(null); // 'testing', 'success', 'error'
   const [connectionError, setConnectionError] = useState("");
+
+  // Chat
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  // Loading/Saving flags
   const [isSavingConnection, setIsSavingConnection] = useState(false);
   const [isLoadingConnections, setIsLoadingConnections] = useState(false);
 
+  // Forms
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState({
     username: "",
@@ -69,26 +128,30 @@ function App() {
     database: "",
   });
 
+  // Which SQL blocks are expanded (simple toggle, keyed by message index)
+  const [expandedSQL, setExpandedSQL] = useState({});
+
   const messagesEndRef = useRef(null);
 
-  // Auto-login for development (remove in production)
+  // Auto-login for dev (remove or adapt for production)
   useEffect(() => {
-    // Skip authentication for development
     setToken("dev-token-12345");
     setIsAuthenticated(true);
   }, []);
 
-  // Load saved connections when authenticated
+  // Fetch connections on auth
   useEffect(() => {
     if (isAuthenticated && token) {
       fetchConnections();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, token]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Fetch saved connections
   const fetchConnections = async () => {
     setIsLoadingConnections(true);
     try {
@@ -112,6 +175,7 @@ function App() {
     }
   };
 
+  // Authentication handler
   const handleAuth = async (e) => {
     e.preventDefault();
     try {
@@ -151,9 +215,10 @@ function App() {
     setShowDbConfig(false);
   };
 
+  // Add new connection
   const handleAddConnection = async () => {
-    if (!dbForm.name || !dbForm.host || !dbForm.database) {
-      alert("Please fill in all required fields (Name, Host, Database)");
+    if (!dbForm.name || !dbForm.database) {
+      alert("Please fill in all required fields (Name, Database)");
       return;
     }
 
@@ -198,6 +263,7 @@ function App() {
     }
   };
 
+  // Test connection API
   const testConnection = async (connection) => {
     setConnectionStatus("testing");
     setConnectionError("");
@@ -243,6 +309,7 @@ function App() {
     }
   };
 
+  // Select a connection (and test)
   const handleSelectConnection = async (conn) => {
     setActiveConnection(conn);
     setMessages([]);
@@ -253,6 +320,7 @@ function App() {
     await testConnection(conn);
   };
 
+  // Delete connection
   const handleDeleteConnection = async (id, event) => {
     event.stopPropagation();
 
@@ -288,6 +356,7 @@ function App() {
     }
   };
 
+  // Heuristics to choose chart type
   const detectChartType = (data) => {
     if (!data || data.length === 0) return null;
 
@@ -304,6 +373,7 @@ function App() {
     return null;
   };
 
+  // Render a chart when results are appropriate
   const renderChart = (data, type) => {
     if (!data || data.length === 0) return null;
 
@@ -386,6 +456,7 @@ function App() {
     );
   };
 
+  // Send user question to backend chat API
   const handleSendMessage = async () => {
     if (
       !inputMessage.trim() ||
@@ -395,7 +466,8 @@ function App() {
       return;
 
     const userMessage = { role: "user", content: inputMessage };
-    setMessages((prev) => [...prev, userMessage]);
+    const prevMessages = [...messages, userMessage];
+    setMessages(prevMessages);
     setInputMessage("");
     setIsLoading(true);
 
@@ -423,7 +495,7 @@ function App() {
           chartType: chartType,
         };
 
-        const updatedMessages = [...messages, userMessage, assistantMessage];
+        const updatedMessages = [...prevMessages, assistantMessage];
         setMessages(updatedMessages);
         localStorage.setItem(
           `chatMessages_${activeConnection.id}`,
@@ -451,6 +523,33 @@ function App() {
     }
   };
 
+  // Copy helper with small toast
+  const handleCopyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text || "");
+      const el = document.createElement("div");
+      el.textContent = "Copied to clipboard";
+      el.style.position = "fixed";
+      el.style.bottom = "24px";
+      el.style.right = "24px";
+      el.style.padding = "8px 12px";
+      el.style.background = "#10b981";
+      el.style.color = "white";
+      el.style.borderRadius = "8px";
+      el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
+      document.body.appendChild(el);
+      setTimeout(() => document.body.removeChild(el), 1400);
+    } catch (e) {
+      console.error("Copy failed", e);
+      alert("Failed to copy to clipboard");
+    }
+  };
+
+  const toggleSQL = (idx) => {
+    setExpandedSQL((prev) => ({ ...prev, [idx]: !prev[idx] }));
+  };
+
+  // Render UI
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
@@ -651,50 +750,52 @@ function App() {
               No connections yet. Add your first connection above!
             </p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {dbConnections.map((conn) => (
                 <div
                   key={conn.id}
-                  className={`p-3 rounded-lg cursor-pointer transition-colors relative ${
-                    activeConnection?.id === conn.id
-                      ? "bg-green-100 border-2 border-green-400"
-                      : "bg-gray-50 hover:bg-gray-100 border border-gray-200"
-                  }`}
                   onClick={() => handleSelectConnection(conn)}
+                  className={`group p-4 rounded-xl border cursor-pointer transition-all ${
+                    activeConnection?.id === conn.id
+                      ? "bg-blue-50 border-blue-400 shadow-sm"
+                      : "bg-gray-50 hover:bg-gray-100 border-gray-200"
+                  }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      {/* Row 1: Connection Name and DB Type */}
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-semibold text-sm text-gray-800 truncate">
-                          {conn.db_connection_name}
-                        </h4>
-                        <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-semibold text-gray-800 flex items-center gap-2">
+                        {conn.db_connection_name}
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
                           {conn.db_type}
                         </span>
-                      </div>
-
-                      {/* Row 2: Database Name and Created At */}
-                      <div className="flex items-center gap-2 text-xs text-gray-600">
-                        <span className="truncate">📁 {conn.db_name}</span>
-                        {conn.created_at && (
-                          <>
-                            <span>•</span>
-                            <span className="text-gray-500">
-                              {new Date(conn.created_at).toLocaleDateString()}
-                            </span>
-                          </>
-                        )}
-                      </div>
+                      </h4>
+                      <p className="text-sm text-gray-600 mt-1">
+                        📁 {conn.db_name}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {conn.created_at &&
+                          new Date(conn.created_at).toLocaleDateString()}
+                      </p>
                     </div>
-
-                    <button
-                      onClick={(e) => handleDeleteConnection(conn.id, e)}
-                      className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors flex-shrink-0"
-                      title="Delete connection"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          testConnection(conn);
+                        }}
+                        className="p-1 text-blue-600 hover:bg-blue-100 rounded"
+                        title="Test Connection"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => handleDeleteConnection(conn.id, e)}
+                        className="p-1 text-red-600 hover:bg-red-100 rounded"
+                        title="Delete Connection"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -707,51 +808,40 @@ function App() {
       <div className="flex-1 flex flex-col">
         {activeConnection ? (
           <>
-            <div className="bg-white border-b border-gray-200 p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Database className="w-6 h-6 text-blue-600" />
-                  <div>
-                    <h3 className="font-semibold text-gray-800">
-                      {activeConnection.db_connection_name}
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      {activeConnection.db_name}
-                    </p>
-                  </div>
+            <div className="bg-white shadow-sm border-b p-5 flex justify-between items-center">
+              <div className="flex items-center gap-4">
+                <Database className="w-6 h-6 text-blue-600" />
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    {activeConnection.db_connection_name}
+                  </h3>
+                  <p className="text-sm text-gray-600 flex gap-3">
+                    <span>📁 {activeConnection.db_name}</span>
+                    <span>🗄️ {activeConnection.db_type}</span>
+                  </p>
                 </div>
-                {connectionStatus && (
-                  <div className="flex items-center gap-2">
-                    {connectionStatus === "testing" && (
-                      <>
-                        <Loader className="w-5 h-5 text-blue-600 animate-spin" />
-                        <span className="text-sm text-blue-600">
-                          Testing connection...
-                        </span>
-                      </>
-                    )}
-                    {connectionStatus === "success" && (
-                      <>
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                        <span className="text-sm text-green-600">
-                          Connected
-                        </span>
-                      </>
-                    )}
-                    {connectionStatus === "error" && (
-                      <>
-                        <XCircle className="w-5 h-5 text-red-600" />
-                        <span className="text-sm text-red-600">
-                          Connection Failed
-                        </span>
-                      </>
-                    )}
-                  </div>
-                )}
               </div>
-              {connectionStatus === "error" && connectionError && (
-                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-sm text-red-700">{connectionError}</p>
+
+              {connectionStatus && (
+                <div className="flex items-center gap-2">
+                  {connectionStatus === "testing" && (
+                    <>
+                      <Loader className="w-5 h-5 text-blue-600 animate-spin" />
+                      <span className="text-sm text-blue-600">Testing...</span>
+                    </>
+                  )}
+                  {connectionStatus === "success" && (
+                    <>
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <span className="text-sm text-green-600">Connected</span>
+                    </>
+                  )}
+                  {connectionStatus === "error" && (
+                    <>
+                      <XCircle className="w-5 h-5 text-red-600" />
+                      <span className="text-sm text-red-600">Failed</span>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -787,72 +877,133 @@ function App() {
                           msg.role === "user" ? "justify-end" : "justify-start"
                         }`}
                       >
-                        <div
-                          className={`max-w-3xl ${
-                            msg.role === "user"
-                              ? "bg-blue-600 text-white"
-                              : "bg-white border border-gray-200"
-                          } rounded-2xl p-4 shadow-sm`}
-                        >
-                          <p
-                            className={`${
-                              msg.error
-                                ? "text-red-600"
-                                : msg.role === "user"
-                                ? "text-white"
-                                : "text-gray-800"
-                            } whitespace-pre-wrap`}
-                          >
-                            {msg.content}
-                          </p>
+                        {/* User message bubble */}
+                        {msg.role === "user" && (
+                          <div className="max-w-3xl bg-blue-600 text-white rounded-2xl p-4 shadow-sm">
+                            <p className="whitespace-pre-wrap">{msg.content}</p>
+                          </div>
+                        )}
 
-                          {msg.results && msg.results.length > 0 && (
-                            <div className="mt-4">
-                              <div className="overflow-x-auto">
-                                <table className="min-w-full text-sm border-collapse">
-                                  <thead>
-                                    <tr className="border-b border-gray-200">
-                                      {Object.keys(msg.results[0]).map(
-                                        (key) => (
-                                          <th
-                                            key={key}
-                                            className="text-left p-2 font-semibold text-gray-700"
-                                          >
-                                            {key}
-                                          </th>
-                                        )
-                                      )}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {msg.results.slice(0, 10).map((row, i) => (
-                                      <tr
-                                        key={i}
-                                        className="border-b border-gray-100"
-                                      >
-                                        {Object.values(row).map((val, j) => (
-                                          <td
-                                            key={j}
-                                            className="p-2 text-gray-700"
-                                          >
-                                            {val !== null && val !== undefined
-                                              ? String(val)
-                                              : "NULL"}
-                                          </td>
-                                        ))}
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
+                        {/* Assistant / system / error message rendering */}
+                        {msg.role !== "user" && (
+                          <div className="max-w-3xl w-full">
+                            {/* If this message is an error show a red terminal */}
+                            {msg.error ? (
+                              <div className="mb-3">
+                                <SQLTerminal
+                                  text={msg.content}
+                                  isError
+                                  onCopy={() =>
+                                    handleCopyToClipboard(msg.content)
+                                  }
+                                />
                               </div>
-                              {msg.results.length > 10 && (
-                                <p className="text-xs text-gray-500 mt-2">
-                                  Showing 10 of {msg.results.length} results
+                            ) : msg.results && msg.results.length > 0 ? (
+                              <>
+                                {/* Toggle button for SQL (hidden by default) */}
+                                <div className="mb-2">
+                                  <button
+                                    onClick={() => toggleSQL(idx)}
+                                    className="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors"
+                                  >
+                                    {expandedSQL[idx] ? (
+                                      <>
+                                        <ChevronUp className="w-4 h-4" />
+                                        <span>Hide SQL Query</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ChevronDown className="w-4 h-4" />
+                                        <span>Show SQL Query</span>
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+
+                                {/* Simple toggle — show SQL if expanded */}
+                                {expandedSQL[idx] && (
+                                  <SQLTerminal
+                                    text={msg.content}
+                                    onCopy={() =>
+                                      handleCopyToClipboard(msg.content)
+                                    }
+                                  />
+                                )}
+
+                                {/* Results table below the terminal */}
+                                <div className="mt-4 bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                                  <div className="overflow-x-auto">
+                                    <table className="min-w-full text-sm border-collapse">
+                                      <thead>
+                                        <tr className="border-b border-gray-200">
+                                          {Object.keys(msg.results[0]).map(
+                                            (key) => (
+                                              <th
+                                                key={key}
+                                                className="text-left p-2 font-semibold text-gray-700"
+                                              >
+                                                {key}
+                                              </th>
+                                            )
+                                          )}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {msg.results
+                                          .slice(0, 10)
+                                          .map((row, i) => (
+                                            <tr
+                                              key={i}
+                                              className="border-b border-gray-100"
+                                            >
+                                              {Object.values(row).map(
+                                                (val, j) => (
+                                                  <td
+                                                    key={j}
+                                                    className="p-2 text-gray-700"
+                                                  >
+                                                    {val !== null &&
+                                                    val !== undefined
+                                                      ? String(val)
+                                                      : "NULL"}
+                                                  </td>
+                                                )
+                                              )}
+                                            </tr>
+                                          ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                  {msg.results.length > 10 && (
+                                    <p className="text-xs text-gray-500 mt-2">
+                                      Showing 10 of {msg.results.length} results
+                                    </p>
+                                  )}
+
+                                  {/* Visualization block (commented out by default) */}
+                                  {/* {msg.chartType && (
+                                    <div className="mt-4 bg-gray-50 p-4 rounded-lg">
+                                      <div className="flex items-center gap-2 mb-3">
+                                        <BarChart3 className="w-5 h-5 text-blue-600" />
+                                        <h4 className="font-semibold text-gray-800">
+                                          Visualization
+                                        </h4>
+                                      </div>
+                                      {renderChart(msg.results, msg.chartType)}
+                                    </div>
+                                  )} */}
+                                </div>
+                              </>
+                            ) : (
+                              // Assistant text-only response
+                              <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+                                <p className="text-gray-800 whitespace-pre-wrap">
+                                  {msg.content}
                                 </p>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))
                   )}
